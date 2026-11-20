@@ -94,7 +94,28 @@ def metrics(rets, periods_per_year, label):
     var5 = srt[max(0, int(0.05 * n) - 1)]
     cvar5 = sum(srt[: max(1, int(0.05 * n))]) / max(1, int(0.05 * n))
     skew = (n / ((n - 1) * (n - 2)) * sum(((r - mean) / std) ** 3 for r in rets)) if n > 2 and std > 0 else 0.0
+    wins = [r for r in rets if r > 0]
+    losses = [r for r in rets if r < 0]
+    avg_win = sum(wins) / len(wins) if wins else 0.0
+    avg_loss = sum(losses) / len(losses) if losses else 0.0
+    payoff = avg_win / abs(avg_loss) if avg_loss != 0 else 0.0
+    profit_factor = sum(wins) / abs(sum(losses)) if losses and sum(losses) != 0 else 0.0
+    cons_win = cons_loss = cw = cl = 0
+    for r in rets:
+        if r > 0:
+            cw += 1; cl = 0
+        elif r < 0:
+            cl += 1; cw = 0
+        cons_win = max(cons_win, cw); cons_loss = max(cons_loss, cl)
+    ulcer = (sum(d * d for d in dd_series) / n) ** 0.5
+    p95 = srt[min(int(0.95 * n), n - 1)]
+    p05 = srt[max(0, int(0.05 * n) - 1)]
+    tail_ratio = p95 / abs(p05) if p05 != 0 else 0.0
     return {"label": label, "periods": n, "total_return": total - 1, "cagr": cagr,
+            "payoff_ratio_periods": payoff, "profit_factor": profit_factor,
+            "consecutive_wins_periods": cons_win, "consecutive_losses_periods": cons_loss,
+            "ulcer_index": ulcer, "ulcer_performance_index": cagr / ulcer if ulcer > 0 else 0.0,
+            "tail_ratio": tail_ratio,
             "vol_annualized": std * math.sqrt(periods_per_year),
             "sharpe": mean / std * math.sqrt(periods_per_year) if std > 0 else 0.0,
             "sortino": mean / dstd * math.sqrt(periods_per_year) if dstd > 0 else 0.0,
@@ -103,6 +124,31 @@ def metrics(rets, periods_per_year, label):
             "win_rate_periods": sum(1 for r in rets if r > 0) / n,
             "skew": skew, "best_period": max(rets), "worst_period": min(rets),
             "equity_curve": eq, "_dd_series": dd_series}
+
+
+def coverage_gaps(bars, threshold=10):
+    gaps = []
+    for i in range(1, len(bars)):
+        try:
+            a = dt.date.fromisoformat(str(bars[i - 1][0])[:10])
+            b = dt.date.fromisoformat(str(bars[i][0])[:10])
+        except ValueError:
+            continue
+        if (b - a).days > threshold:
+            gaps.append({"from": str(bars[i - 1][0])[:10], "to": str(bars[i][0])[:10],
+                         "calendar_days": (b - a).days})
+    return gaps
+
+
+def check_preconditions(rets):
+    problems = []
+    if len(rets) < 10:
+        problems.append(f"insufficient series: {len(rets)} periods, need >= 10")
+    if any(not math.isfinite(r) for r in rets):
+        problems.append("non-finite return in series")
+    if len(set(rets)) == 1:
+        problems.append("zero-variance series — every ratio metric is undefined")
+    return problems
 
 
 def klines_to_returns(bars):
@@ -133,6 +179,9 @@ def strategy_returns(bars, fast, slow, fee_bps):
     return rets, bars[1:]
 
 
+ENVELOPE_PPY = '?'
+
+
 def svg_equity(eq, dates, title, w=720, h=200):
     lo, hi = min(eq), max(eq)
     n = len(eq)
@@ -147,7 +196,7 @@ def svg_equity(eq, dates, title, w=720, h=200):
             f'<text x="10" y="14" font-size="12">{title} · net {eq[-1]:.4f} (start=1)</text>'
             f'<polyline points="{" ".join(peak_path)}" fill="none" stroke="#aaa" stroke-dasharray="3,3"/>'
             f'<polyline points="{path}" fill="none" stroke="#2456c4" stroke-width="1.5"/>'
-            f'<text x="10" y="{h-6}" font-size="10" fill="#567">{dates[0]} → {dates[-1]} · {n} periods · dashed=running peak</text></svg>')
+            f'<text x="10" y="{h-6}" font-size="10" fill="#567">{dates[0]} → {dates[-1]} · {n} periods · dashed=running peak · ann={ENVELOPE_PPY}</text></svg>')
 
 
 def svg_drawdown(dds, dates, w=720, h=140):
@@ -170,7 +219,12 @@ def render_rows(m):
             ("calmar", f"{m['calmar']:.2f}"), ("max_drawdown", f"{m['max_drawdown']:.1%}"),
             ("VaR5(hist)", f"{m['var5_hist']:.2%}"), ("CVaR5(hist)", f"{m['cvar5_hist']:.2%}"),
             (t("win_rate_label"), f"{m['win_rate_periods']:.1%}"), ("skew", f"{m['skew']:.2f}"),
-            ("best/worst period", f"{m['best_period']:+.2%} / {m['worst_period']:+.2%}")]
+            ("best/worst period", f"{m['best_period']:+.2%} / {m['worst_period']:+.2%}"),
+            (t("payoff_label"), f"{m['payoff_ratio_periods']:.2f}"),
+            ("profit_factor", f"{m['profit_factor']:.2f}"),
+            ("consecutive W/L (periods)", f"{m['consecutive_wins_periods']} / {m['consecutive_losses_periods']}"),
+            ("ulcer_index", f"{m['ulcer_index']:.4f}"), ("UPI", f"{m['ulcer_performance_index']:.2f}"),
+            ("tail_ratio (P95/|P5|)", f"{m['tail_ratio']:.2f}")]
 
 
 def main():
@@ -195,8 +249,15 @@ def main():
     else:
         rets, dated = klines_to_returns(bars)
         label = f"{symbol} buy&hold"
+    problems = check_preconditions(rets)
+    if problems:
+        sys.exit("refused honestly — " + "; ".join(problems))
     m = metrics(rets, args.periods_per_year, label)
     dates = [b[0] for b in dated]
+    gaps = coverage_gaps(bars)
+    source = {"origin": "user-provided klines JSON", "symbol": symbol,
+              "date_range": [str(bars[0][0])[:10], str(bars[-1][0])[:10]],
+              "bars": len(bars), "coverage_gaps": gaps}
 
     print(t("header", label=label) + "\n")
     rows = render_rows(m)
@@ -211,7 +272,21 @@ def main():
 
     if args.save:
         import os
+        global ENVELOPE_PPY
+        ENVELOPE_PPY = args.periods_per_year
         dds = m.pop("_dd_series")
+        envelope = {"schema": "perf-report/0", "label": label,
+                    "honesty": {"annualization_factor": args.periods_per_year,
+                                "var_method": "historical non-parametric quantile",
+                                "sample_size_warnings": ([f"n={m['periods']} < 30: Sharpe/Sortino noise zone"]
+                                                         if m["periods"] < 30 else []),
+                                "periods": m["periods"],
+                                "caliber": "all trade statistics are period-based, not trade-based"},
+                    "source": source,
+                    "metrics": {k: v for k, v in m.items() if k != "equity_curve"}}
+        jpath = f"reports/{symbol.replace('/', '_')}-{args.strategy}-{dt.date.today()}.json"
+        json.dump(envelope, open(jpath, "w"), ensure_ascii=False, indent=1, default=str)
+        print(t("saved", path=jpath), file=sys.stderr)
         html = ("<!doctype html><meta charset=utf-8><body style='font-family:monospace;max-width:760px;margin:20px auto'>"
                 f"<h3>Tearsheet · {label}</h3>"
                 + svg_equity(m["equity_curve"], dates, label)
