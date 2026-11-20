@@ -3,8 +3,8 @@
 **Sharpe, Sortino, Calmar, drawdown, VaR — computed deterministically from your
 returns, rendered as a zero-dependency SVG tearsheet, with the assumptions
 disclosed and the sample-size alarm on. The report that states its own limits.**
-**夏普/索提诺/卡尔玛/回撤/VaR——从收益序列确定性计算，零依赖 SVG tearsheet
-呈现，假设显式披露、样本量警报常开。会声明自身边界的报告。**
+
+[English](README.md) | [简体中文](README.zh-CN.md)
 
 [![DeepSeek Harness](https://img.shields.io/badge/DSH-plugin-4E6DD4)](https://github.com/deepseek-ai) [![License: MIT](https://img.shields.io/badge/license-MIT-3da639)](LICENSE) [![QuantStats Apache-2.0](https://img.shields.io/badge/concept-QuantStats%20Apache--2.0-35a7a0)](https://github.com/ranaroussi/quantstats)
 
@@ -16,6 +16,24 @@ disclosed and the sample-size alarm on. The report that states its own limits.**
 > [dsh-OpenBB](https://github.com/vicfei/dsh-OpenBB) · [dsh-CCXT](https://github.com/vicfei/dsh-CCXT) ·
 > [dsh-nautilus_trader](https://github.com/vicfei/dsh-nautilus_trader) ·
 > [dsh-hummingbot](https://github.com/vicfei/dsh-hummingbot) · [dsh-jesse](https://github.com/vicfei/dsh-jesse).
+
+
+## Where upstream quantstats fits (a complement, not a competitor)
+
+Upstream [quantstats](https://github.com/ranaroussi/quantstats) (7.9k★, by the
+yfinance author) is a completed-state Python library for notebook quants:
+~60 metrics, 20 plots, HTML tearsheets, a heavy stack (pandas/scipy/
+matplotlib/seaborn/yfinance). **In a pandas notebook, use quantstats.**
+dsh-quantstats is the **DSH-session report layer**: zero-dependency, every
+metric rides with its caliber (period-based, disclosed), inline-SVG
+tearsheets, family-artifact consumption (committee ledgers, engine series).
+
+| | upstream quantstats (complement) | **dsh-quantstats** |
+|---|---|---|
+| Form | Python library for notebooks | **DSH plugin** — agent asks, report out |
+| Deps | pandas/scipy/matplotlib/seaborn/yfinance | **zero (stdlib only)** |
+| Calibers | period-vs-trade disclosure in README | **every metric carries its caliber line in-band** |
+| Data | yfinance downloads | **your series / family artifacts** |
 
 ## Why (QuantStats exists — what does the DSH-native version add?)
 

@@ -1,18 +1,73 @@
 #!/usr/bin/env python3
-"""绩效 tearsheet（quantstats 核心概念的原生实现，M0）
+"""Performance tearsheet engine (the quantstats concept seat, native implementation)
 
-上游 QuantStats（7.9k★，Apache-2.0，yfinance 作者出品）= 量化组合分析：
-全套绩效指标 + HTML tearsheet。本插件原生实现该层，差异=家族诚实件：
-- 年化因子假设显式披露（crypto 365 / 股票 252，参数化）
-- 样本量不足时对 Sharpe/Sortino 打警告（n<30 是噪声区）
-- VaR 声明为历史非参数法；"过去业绩≠未来"写进输出
-- 零依赖内联 SVG tearsheet（无 CDN，离线可分享）
+Upstream QuantStats (7.9k★, Apache-2.0, by the yfinance author) is a
+completed-state library for notebook quants: ~60 metrics, 20 plots, HTML
+tearsheets over a heavy stack. This plugin is the **DSH-session report
+layer** — zero-dependency, every metric rides with its caliber, inline-SVG
+tearsheets, family-artifact consumption. In a pandas notebook, use
+quantstats; in a DSH session, use dsh-quantstats.
 
-用法：
-  python3 scripts/tearsheet.py --data /tmp/btc_365.json                 # 买入持有
+The honesty trio (never detaches):
+- annualization factor disclosed explicitly (crypto 365 / equities 252,
+  parameterized)
+- sample-size warnings on Sharpe/Sortino when n < 30 (noise zone)
+- VaR declared historical non-parametric; "past performance ≠ future"
+  written into the output itself
+
+Usage:
+  python3 scripts/tearsheet.py --data /tmp/btc_365.json                  # buy&hold
   python3 scripts/tearsheet.py --data /tmp/btc_365.json --strategy sma --fast 20 --slow 60 --save
 """
 import argparse, datetime as dt, json, math, sys
+
+# English is the first language (family rule); Chinese is the --lang zh fallback.
+LANG = "en"
+STR = {
+    "en": {
+        "header": "## Tearsheet · {label}",
+        "honesty_title": "## Honesty trio (assumptions & warnings, never detaches)",
+        "honesty_lines": [
+            "annualization factor = {ppy} ({kind} daily, a parameterized assumption — change the frequency, change the factor)",
+            "VaR/CVaR are historical non-parametric quantiles; no tail-distribution assumption is made",
+            "sample size {n}{warn}",
+            "past performance ≠ future results; this table is descriptive statistics, not a forecast",
+        ],
+        "noise_warn": " ⚠ <30: Sharpe/Sortino are in the noise zone — not comparable",
+        "ppy_kind_crypto": "crypto",
+        "ppy_kind_equity": "equities",
+        "footer": "engine: tearsheet v0 · zero-dependency SVG · {ts} · not investment advice",
+        "saved": "→ {path}",
+        "win_rate_label": "win_rate(periods)",
+        "payoff_label": "payoff_ratio(periods)",
+        "annualized": "ann",
+    },
+    "zh": {
+        "header": "## Tearsheet · {label}",
+        "honesty_title": "## 诚实件（假设与警告，不可剥离）",
+        "honesty_lines": [
+            "年化因子 = {ppy}（{kind}日频，参数化假设，换频率须换因子）",
+            "VaR/CVaR 为历史非参数分位数，不含尾部分布假设",
+            "样本量 {n}{warn}",
+            "过去业绩≠未来表现；本表为描述统计，非预测",
+        ],
+        "noise_warn": " ⚠ <30：Sharpe/Sortino 处于噪声区，不可用于比较",
+        "ppy_kind_crypto": "加密",
+        "ppy_kind_equity": "股票",
+        "footer": "engine: tearsheet v0 · 零依赖 SVG · {ts} · 非投资建议",
+        "saved": "→ {path}",
+        "win_rate_label": "胜率(按期)",
+        "payoff_label": "盈亏比(按期)",
+        "annualized": "年化",
+    },
+}
+
+
+def t(key, **kw):
+    s0 = STR[LANG].get(key, key)
+    if isinstance(s0, list):
+        return [x.format(**kw) for x in s0]
+    return s0.format(**kw) if kw else s0
 
 
 def metrics(rets, periods_per_year, label):
@@ -30,8 +85,11 @@ def metrics(rets, periods_per_year, label):
     years = n / periods_per_year
     cagr = total ** (1 / years) - 1 if years > 0 else 0.0
     peak, mdd = eq[0], 0.0
+    dd_series = []
     for e in eq:
-        peak = max(peak, e); mdd = min(mdd, e / peak - 1)
+        peak = max(peak, e)
+        dd_series.append(e / peak - 1)
+        mdd = min(mdd, e / peak - 1)
     srt = sorted(rets)
     var5 = srt[max(0, int(0.05 * n) - 1)]
     cvar5 = sum(srt[: max(1, int(0.05 * n))]) / max(1, int(0.05 * n))
@@ -44,7 +102,7 @@ def metrics(rets, periods_per_year, label):
             "max_drawdown": mdd, "var5_hist": var5, "cvar5_hist": cvar5,
             "win_rate_periods": sum(1 for r in rets if r > 0) / n,
             "skew": skew, "best_period": max(rets), "worst_period": min(rets),
-            "equity_curve": eq}
+            "equity_curve": eq, "_dd_series": dd_series}
 
 
 def klines_to_returns(bars):
@@ -92,10 +150,8 @@ def svg_equity(eq, dates, title, w=720, h=200):
             f'<text x="10" y="{h-6}" font-size="10" fill="#567">{dates[0]} → {dates[-1]} · {n} periods · dashed=running peak</text></svg>')
 
 
-def svg_drawdown(eq, dates, w=720, h=140):
-    n = len(eq); peak, dds = eq[0], []
-    for v in eq:
-        peak = max(peak, v); dds.append(v / peak - 1)
+def svg_drawdown(dds, dates, w=720, h=140):
+    n = len(dds)
     lo = min(dds)
     X = lambda i: 40 + i * (w - 60) / (n - 1)
     Y = lambda v: 16 + v / (lo + 1e-9) * (h - 46)  # v∈[lo,0] → [h-30,16]
@@ -107,16 +163,30 @@ def svg_drawdown(eq, dates, w=720, h=140):
             f'<text x="10" y="{h-6}" font-size="10" fill="#567">{dates[0]} → {dates[-1]}</text></svg>')
 
 
+def render_rows(m):
+    return [("periods", m["periods"]), ("total_return", f"{m['total_return']:+.2%}"),
+            ("CAGR", f"{m['cagr']:+.2%}"), ("vol(ann)", f"{m['vol_annualized']:.2%}"),
+            ("sharpe", f"{m['sharpe']:.2f}"), ("sortino", f"{m['sortino']:.2f}"),
+            ("calmar", f"{m['calmar']:.2f}"), ("max_drawdown", f"{m['max_drawdown']:.1%}"),
+            ("VaR5(hist)", f"{m['var5_hist']:.2%}"), ("CVaR5(hist)", f"{m['cvar5_hist']:.2%}"),
+            (t("win_rate_label"), f"{m['win_rate_periods']:.1%}"), ("skew", f"{m['skew']:.2f}"),
+            ("best/worst period", f"{m['best_period']:+.2%} / {m['worst_period']:+.2%}")]
+
+
 def main():
+    global LANG
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True)
     ap.add_argument("--strategy", choices=("buyhold", "sma"), default="buyhold")
     ap.add_argument("--fast", type=int, default=20)
     ap.add_argument("--slow", type=int, default=60)
     ap.add_argument("--fee_bps", type=float, default=5)
-    ap.add_argument("--periods_per_year", type=int, default=365, help="crypto=365 股票=252（披露用）")
+    ap.add_argument("--periods_per_year", type=int, default=365, help="crypto=365 equities=252 (disclosed)")
     ap.add_argument("--save", action="store_true")
+    ap.add_argument("--lang", choices=("en", "zh"), default="en",
+                    help="output language (default en; zh is the fallback)")
     args = ap.parse_args()
+    LANG = args.lang
     data = json.load(open(args.data))
     symbol, bars = next(iter(data.items()))
     if args.strategy == "sma":
@@ -128,37 +198,30 @@ def main():
     m = metrics(rets, args.periods_per_year, label)
     dates = [b[0] for b in dated]
 
-    print(f"## Tearsheet · {label}\n")
-    rows = [("periods", m["periods"]), ("total_return", f"{m['total_return']:+.2%}"),
-            ("CAGR", f"{m['cagr']:+.2%}"), ("vol(ann)", f"{m['vol_annualized']:.2%}"),
-            ("sharpe", f"{m['sharpe']:.2f}"), ("sortino", f"{m['sortino']:.2f}"),
-            ("calmar", f"{m['calmar']:.2f}"), ("max_drawdown", f"{m['max_drawdown']:.1%}"),
-            ("VaR5(hist)", f"{m['var5_hist']:.2%}"), ("CVaR5(hist)", f"{m['cvar5_hist']:.2%}"),
-            ("win_rate(periods)", f"{m['win_rate_periods']:.1%}"), ("skew", f"{m['skew']:.2f}"),
-            ("best/worst period", f"{m['best_period']:+.2%} / {m['worst_period']:+.2%}")]
+    print(t("header", label=label) + "\n")
+    rows = render_rows(m)
     for k, v in rows:
         print(f"- **{k}**: {v}")
-    print(f"""
-## 诚实件（假设与警告，不可剥离）
-- 年化因子 = {args.periods_per_year}（{"crypto 日频" if args.periods_per_year == 365 else "股票日频"}，参数化假设，换频率须换因子）
-- VaR/CVaR 为历史非参数分位数，不含尾部分布假设
-- 样本量 {m['periods']}{" ⚠ <30：Sharpe/Sortino 处于噪声区，不可用于比较" if m['periods'] < 30 else ""}
-- 过去业绩≠未来表现；本表为描述统计，非预测
----
-*engine: tearsheet v0 · 零依赖 SVG · {dt.datetime.now().isoformat(timespec='seconds')} · 非投资建议*""")
+    kind = t("ppy_kind_crypto") if args.periods_per_year == 365 else t("ppy_kind_equity")
+    warn = t("noise_warn") if m["periods"] < 30 else ""
+    print("\n" + t("honesty_title"))
+    for line in t("honesty_lines", ppy=args.periods_per_year, kind=kind, n=m["periods"], warn=warn):
+        print(f"- {line}")
+    print(f"\n---\n*{t('footer', ts=dt.datetime.now().isoformat(timespec='seconds'))}*")
 
     if args.save:
+        import os
+        dds = m.pop("_dd_series")
         html = ("<!doctype html><meta charset=utf-8><body style='font-family:monospace;max-width:760px;margin:20px auto'>"
                 f"<h3>Tearsheet · {label}</h3>"
                 + svg_equity(m["equity_curve"], dates, label)
-                + svg_drawdown(m["equity_curve"], dates)
+                + svg_drawdown(dds, dates)
                 + "<pre>" + "\n".join(f"{k:>20}: {v}" for k, v in rows) + "</pre>"
                 + "<hr><small>annualization=" + str(args.periods_per_year) + " · VaR=historical non-parametric · past ≠ future</small></body>")
-        import os
         os.makedirs("reports", exist_ok=True)
         path = f"reports/{symbol.replace('/', '_')}-{args.strategy}-{dt.date.today()}.html"
         open(path, "w").write(html)
-        print(f"→ {path}", file=sys.stderr)
+        print(t("saved", path=path), file=sys.stderr)
 
 
 if __name__ == "__main__":
