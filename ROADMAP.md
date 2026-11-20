@@ -1,32 +1,83 @@
 # ROADMAP — dsh-quantstats
 
-北极星：九仓家族的绩效报告层，吃 QuantStats 7.9k★ 流量，30 天 100–300★。
-命名全表面：GitHub=npm=dsh-quantstats（镜像上游小写仓名）。
-家族分工：nautilus=回测 / jesse=调参 / **本仓=测量与报告**——所有引擎的产出
-都该流经这里出一张诚实的成绩单。
+North star: the family's performance-report seat, riding the QuantStats 7.9k★
+gravity, 100–300★ in 30 days. Naming on all surfaces: GitHub = npm =
+dsh-quantstats (mirrors the upstream lowercase name). Family division:
+nautilus = backtests · jesse = tuning · **this repo = measurement and
+reporting** — every family engine's output should flow through here to get
+one honest scorecard.
 
-## 里程碑
+## Positioning discipline (this repo's own)
 
-### M0 ✅（2026-11-17）
-tearsheet 引擎（夏普/索提诺/卡尔玛/回撤/VaR/CVaR/偏度/胜率 + 零依赖 SVG
-权益与回撤曲线 + 诚实件三则：年化因子披露/历史 VaR 声明/样本量警报）。
-真实冒烟：BTC 365d 熊年双表（持有 -29.9%/回撤 -39.5% vs SMA20/60 +1.6%/-19.3%）。
+Upstream [QuantStats](https://github.com/ranaroussi/quantstats) is a
+**completed-state library** (7.5 years, yfinance author, quality-fix-only
+maintenance): a Python API with a heavy stack (pandas/scipy/matplotlib/
+seaborn/yfinance) for notebook quants. It will never be an agent product.
+We are the **DSH-session report layer**: zero-dependency, every metric
+rides with its caliber, SVG tearsheets, family-artifact consumption.
+The README table says it plainly: **in a pandas notebook, use quantstats;
+in a DSH session, use dsh-quantstats** (the jesse-seat complement pattern,
+third application).
 
-### M0.5 · 发布包
-- [ ] README 打磨 + 双表对比截图 + npm 0.0.1 占位（owner 手动）
-- [ ] 公开仓 topics + 九仓互链 + marketplace + 渠道
+**Competitive read (2026-11-20 deep-dive, issue #1)**: upstream's own README
+carries a caliber disclosure (period-based vs trade-based metrics) — the
+honesty-trio soul is validated, not differentiated alone; our wordlist
+adopts from its ~60-metric vocabulary, each with the period caliber stated.
+Its Monte Carlo family defers to the family bridge (dsh-Kronos) per
+division of labor — we measure, Kronos simulates.
 
-### M1 · 深度（第 2-3 周）
-- [ ] 滚动指标（rolling Sharpe/DD 曲线）+ 基准相对模式（超额/alpha/beta）
-- [ ] 直接消费家族引擎产出（nautilus/jesse/hummingbot 的收益序列 → tearsheet）
+## Milestones
 
-### M2 · 插件化（第 4-6 周）
-- [ ] cordis 插件 typed tools（tearsheet.run / metrics.compute）
+### M0 ✅ (2026-11-17)
+Tearsheet engine (sharpe/sortino/calmar/drawdown/VaR/CVaR/skew/win-rate +
+zero-dependency SVG equity & drawdown curves + the honesty trio:
+annualization-factor disclosure / historical-VaR declaration / sample-size
+alerts). Real smoke: BTC 365d bear-year double table (buy&hold −29.9%/DD
+−39.5% vs SMA20/60 +1.6%/−19.3%).
 
-### M3 · 生态（第 2 月起）
-- [ ] 报告标准（PERF-REPORT spec，与 IC-MEMO/OPT-REPORT/RESEARCH-TRAIL 会师成家族四格式）
+### V1 · Hardening + release train → npm 0.1.0 (next session)
+- [ ] V1.1 EN-first: engine output via i18n table (en default, `--lang zh`
+      fallback); README pure EN with the upstream-complement table +
+      `README.zh-CN.md` translation
+- [ ] V1.2 honesty envelope: the trio becomes structural (annualization
+      factor, VaR method, sample-size warnings inside the saved artifact,
+      schema perf-report/0); unavailable-with-reason on degenerate series
+- [ ] V1.3 source metadata rides: data origin/date-range/periods/coverage
+- [ ] V1.4 **wordlist expansion from the upstream vocabulary, each with its
+      caliber**: payoff_ratio / profit_factor / consecutive_wins_losses /
+      ulcer_index / tail_ratio / best / worst — all period-based, disclosed
+- [ ] V1.5 release train: root package (bin shim, dsh.bundle + skill,
+      hermetic tests + CI, `scripts/*.py` glob); owner publish;
+      awesome-dsh submission
 
-## 纪律（不可让步）
+### V2 · The family data plane → npm 0.2.0
+- [ ] V2.1 **the committee track-record tearsheet**: consume the
+      dsh-TradingAgents settled ledger (verdict returns → return series →
+      tearsheet) — "the committee's scorecard, one command"; period-based
+      caliber stated; synthetic entries marked, never mixed
+- [ ] V2.2 family-engine consumption: jesse backtest summaries, kronos
+      objectives, any {date, ret} series (JSON/CSV) → tearsheet
+- [ ] V2.3 benchmark-relative mode: excess return / alpha / beta vs a
+      benchmark series, with the same honesty trio
 
-- 诚实件（年化因子/VaR 方法/样本量警报）不可从任何输出剥离；
-- 指标为描述统计，不得作预测表述；不做投资建议。
+### V3 · Depth + plugin form (0.3.x)
+- [ ] V3.1 rolling metrics (rolling Sharpe / drawdown curves as SVG)
+- [ ] V3.2 typed tools for the DSH host (tearsheet_run / metrics_compute)
+- [ ] V3.3 PERF-REPORT spec v0.1 (the family's interchange formats:
+      IC-MEMO · RESEARCH-TRAIL · OPT-REPORT · SCENARIO-REPORT · PERF-REPORT)
+
+## Star strategy
+
+1. Name = traffic (`quantstats`); topics carry dsh/dsh-plugin.
+2. Hook: **"every metric rides with its caliber — the tearsheet that tells
+   you what its numbers mean"**; the committee-scorecard tearsheet (V2.1)
+   doubles as the family-loop showcase.
+3. The bear-year double table is post-ready.
+4. awesome-dsh submission after npm 0.1.0; family combo discipline.
+
+## Discipline (non-negotiable)
+
+- The honesty trio (annualization factor / VaR method / sample-size alerts)
+  never detaches from any output.
+- Metrics are descriptive statistics, never phrased as predictions; every
+  trade-statistic carries its period-based caliber; no investment advice.
