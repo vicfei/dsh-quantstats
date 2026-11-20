@@ -1,0 +1,15 @@
+{
+  "name": "dsh-quantstats",
+  "version": "0.1.0",
+  "description": "Performance tearsheets for DeepSeek Harness — zero-dependency, every metric rides with its caliber (period-based, disclosed), the honesty trio (annualization factor / VaR method / sample-size alerts) structural in every artifact, inline-SVG tearsheets, and family-artifact consumption: committee track records, engine return series, benchmark-relative mode.",
+  "bin": { "dsh-quantstats": "bin/dsh-quantstats.js" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" }, "manifestVersion": 1 },
+  "files": ["bin", "scripts/*.py", "skills", "cordis.patch.yml", "SKILL.md", "README.md", "README.zh-CN.md", "ROADMAP.md", "LICENSE"],
+  "scripts": { "test": "python3 tests/test_engine.py && node bin/dsh-quantstats.js --help" },
+  "engines": { "node": ">=16" },
+  "keywords": ["deepseek-harness", "dsh", "dsh-plugin", "quantstats", "tearsheet", "performance-analytics", "sharpe-ratio", "drawdown", "var", "risk-metrics", "portfolio", "quant"],
+  "repository": { "type": "git", "url": "git+https://github.com/vicfei/dsh-quantstats.git" },
+  "homepage": "https://github.com/vicfei/dsh-quantstats#readme",
+  "license": "MIT",
+  "author": "vicfei"
+}
