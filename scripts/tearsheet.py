@@ -19,7 +19,7 @@ Usage:
   python3 scripts/tearsheet.py --data /tmp/btc_365.json                  # buy&hold
   python3 scripts/tearsheet.py --data /tmp/btc_365.json --strategy sma --fast 20 --slow 60 --save
 """
-import argparse, datetime as dt, json, math, sys
+import argparse, datetime as dt, json, math, os, sys
 
 # English is the first language (family rule); Chinese is the --lang zh fallback.
 LANG = "en"
@@ -212,6 +212,62 @@ def svg_drawdown(dds, dates, w=720, h=140):
             f'<text x="10" y="{h-6}" font-size="10" fill="#567">{dates[0]} → {dates[-1]}</text></svg>')
 
 
+def load_series(path):
+    """any {date, ret} input: JSON list [{date, ret}] or CSV date,ret (V2.2)"""
+    if path.endswith(".csv"):
+        rows = []
+        for line in open(path).read().strip().split("\n")[1:]:
+            d, r = line.split(",")[:2]
+            rows.append({"date": d.strip(), "ret": float(r)})
+        return rows
+    return json.load(open(path))
+
+
+def load_ledger(path):
+    """dsh-TradingAgents settled ledger -> directed-verdict return series (V2.1).
+    Only resolved, non-synthetic, directed entries count; pending and synthetic
+    are reported and excluded. Caliber: verdict-window returns (holding-period
+    holds), not daily marks."""
+    d = json.load(open(path))
+    entries = d.get("entries", d if isinstance(d, list) else [])
+    rows, pending, synthetic, unscored = [], 0, 0, 0
+    for e in entries:
+        if e.get("synthetic"):
+            synthetic += 1
+            continue
+        if e.get("pending", True):
+            pending += 1
+            continue
+        ret = e.get("settled_return")
+        if ret is None or e.get("decision") in ("PASS", "REVIEW"):
+            unscored += 1
+            continue
+        rows.append({"date": e.get("resolution_date") or e.get("date"), "ret": float(ret)})
+    rows.sort(key=lambda r: r["date"])
+    return rows, {"pending": pending, "synthetic_excluded": synthetic,
+                  "resolved_unscored": unscored, "scored": len(rows),
+                  "caliber": "verdict-window returns (holding-period holds), not daily marks"}
+
+
+def relative_metrics(rets, bench_rets, periods_per_year):
+    """benchmark-relative block (V2.3): excess / alpha / beta, period-based."""
+    n = min(len(rets), len(bench_rets))
+    if n < 10:
+        return {"unavailable": f"overlapping periods {n} < 10"}
+    r, b = rets[-n:], bench_rets[-n:]
+    mr, mb = sum(r) / n, sum(b) / n
+    cov = sum((r[i] - mr) * (b[i] - mb) for i in range(n)) / (n - 1)
+    vb = sum((b[i] - mb) ** 2 for i in range(n)) / (n - 1)
+    beta = cov / vb if vb > 0 else 0.0
+    excess = [r[i] - b[i] for i in range(n)]
+    me = sum(excess) / n
+    return {"beta_period_based": beta, "mean_excess_period": me,
+            "alpha_annualized": me * periods_per_year,
+            "excess_total": (math.prod(1 + x for x in excess) - 1) if excess else 0.0,
+            "overlapping_periods": n,
+            "caliber": "beta = cov/var on overlapping periods; alpha = mean excess x annualization factor (a simplification, not a factor model)"}
+
+
 def render_rows(m):
     return [("periods", m["periods"]), ("total_return", f"{m['total_return']:+.2%}"),
             ("CAGR", f"{m['cagr']:+.2%}"), ("vol(ann)", f"{m['vol_annualized']:.2%}"),
@@ -230,23 +286,47 @@ def render_rows(m):
 def main():
     global LANG
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", required=True)
+    ap.add_argument("--data", help="klines JSON (required unless --series/--ledger)")
     ap.add_argument("--strategy", choices=("buyhold", "sma"), default="buyhold")
     ap.add_argument("--fast", type=int, default=20)
     ap.add_argument("--slow", type=int, default=60)
     ap.add_argument("--fee_bps", type=float, default=5)
     ap.add_argument("--periods_per_year", type=int, default=365, help="crypto=365 equities=252 (disclosed)")
+    ap.add_argument("--series", help="any {date, ret} series: JSON list or CSV (family engines emit this shape)")
+    ap.add_argument("--ledger", help="dsh-TradingAgents ledger JSON -> the committee scorecard")
+    ap.add_argument("--benchmark", help="benchmark series ({date, ret} JSON/CSV or klines JSON) for relative mode")
     ap.add_argument("--save", action="store_true")
     ap.add_argument("--lang", choices=("en", "zh"), default="en",
                     help="output language (default en; zh is the fallback)")
     args = ap.parse_args()
     LANG = args.lang
-    data = json.load(open(args.data))
-    symbol, bars = next(iter(data.items()))
-    if args.strategy == "sma":
+    if not (args.data or args.series or args.ledger):
+        sys.exit("refused honestly -- one of --data / --series / --ledger is required")
+    ledger_note = ""
+    if args.ledger:
+        rows_l, ledger_stats = load_ledger(args.ledger)
+        rets = [r["ret"] for r in rows_l]
+        dated = [[r["date"], 0, 0, 0, 0, 0] for r in rows_l]
+        symbol = "committee"
+        label = f"committee track record ({ledger_stats['scored']} scored verdicts)"
+        ledger_note = (f"ledger: {ledger_stats['scored']} scored | {ledger_stats['pending']} pending | "
+                       f"{ledger_stats['synthetic_excluded']} synthetic excluded | {ledger_stats['resolved_unscored']} resolved-unscored"
+                       f" | caliber: {ledger_stats['caliber']}")
+        bars = dated
+    elif args.series:
+        rows_s = load_series(args.series)
+        rets = [r["ret"] for r in rows_s]
+        dated = [[r.get("date", str(i)), 0, 0, 0, 0, 0] for i, r in enumerate(rows_s)]
+        symbol = "series"
+        label = f"series {os.path.basename(args.series)}"
+        bars = dated
+    else:
+        data = json.load(open(args.data))
+        symbol, bars = next(iter(data.items()))
+    if not args.ledger and not args.series and args.strategy == "sma":
         rets, dated = strategy_returns(bars, args.fast, args.slow, args.fee_bps)
         label = f"{symbol} SMA{args.fast}/{args.slow} (fee {args.fee_bps}bps)"
-    else:
+    elif not args.ledger and not args.series:
         rets, dated = klines_to_returns(bars)
         label = f"{symbol} buy&hold"
     problems = check_preconditions(rets)
@@ -259,19 +339,39 @@ def main():
               "date_range": [str(bars[0][0])[:10], str(bars[-1][0])[:10]],
               "bars": len(bars), "coverage_gaps": gaps}
 
+    relative = None
+    if args.benchmark:
+        bd = json.load(open(args.benchmark))
+        if isinstance(bd, dict) and any(isinstance(v, list) and v and isinstance(v[0], list) for v in bd.values()):
+            bench_rets, _ = klines_to_returns(next(iter(bd.values())))
+        elif isinstance(bd, list):
+            bench_rets = [r["ret"] for r in bd]
+        else:
+            sys.exit("refused honestly -- benchmark must be a klines JSON or a {date, ret} list")
+        relative = relative_metrics(rets, bench_rets, args.periods_per_year)
+        if isinstance(relative, dict) and "unavailable" in relative:
+            print(f"benchmark-relative unavailable: {relative['unavailable']}")
+            relative = None
+
     print(t("header", label=label) + "\n")
     rows = render_rows(m)
     for k, v in rows:
         print(f"- **{k}**: {v}")
     kind = t("ppy_kind_crypto") if args.periods_per_year == 365 else t("ppy_kind_equity")
     warn = t("noise_warn") if m["periods"] < 30 else ""
+    if relative:
+        print("\n## benchmark-relative (period-based, disclosed)")
+        print(f"- beta: {relative['beta_period_based']:.2f} | alpha(ann, simplified): {relative['alpha_annualized']:+.2%}")
+        print(f"- mean excess/period: {relative['mean_excess_period']:+.4%} | total excess: {relative['excess_total']:+.2%}")
+        print(f"- caliber: {relative['caliber']}")
+    if ledger_note:
+        print("\n" + ledger_note)
     print("\n" + t("honesty_title"))
     for line in t("honesty_lines", ppy=args.periods_per_year, kind=kind, n=m["periods"], warn=warn):
         print(f"- {line}")
     print(f"\n---\n*{t('footer', ts=dt.datetime.now().isoformat(timespec='seconds'))}*")
 
     if args.save:
-        import os
         global ENVELOPE_PPY
         ENVELOPE_PPY = args.periods_per_year
         dds = m.pop("_dd_series")

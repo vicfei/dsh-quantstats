@@ -70,5 +70,40 @@ env_honesty = {"annualization_factor": 365, "var_method": "historical non-parame
 check("envelope keys", set(env_honesty) == {"annualization_factor", "var_method",
                                             "sample_size_warnings", "periods", "caliber"})
 
+# 8. V2: loaders + relative metrics
+import json as _json, tempfile as _tf
+with _tf.TemporaryDirectory() as td:
+    ser = [{"date": f"2026-01-{i+1:02d}", "ret": rng.gauss(0.001, 0.01)} for i in range(30)]
+    p = os.path.join(td, "s.json")
+    _json.dump(ser, open(p, "w"))
+    check("load_series json round-trip", ts.load_series(p) == ser)
+    csv_p = os.path.join(td, "s.csv")
+    open(csv_p, "w").write("date,ret\n" + "\n".join(f"{r['date']},{r['ret']}" for r in ser[:5]))
+    check("load_series csv", len(ts.load_series(csv_p)) == 5)
+
+led = {"entries": [
+    {"ticker": "A", "date": "2026-11-01", "decision": "HOLD", "pending": False,
+     "settled_return": 0.03, "resolution_date": "2026-11-08", "synthetic": False},
+    {"ticker": "B", "date": "2026-11-02", "decision": "PASS", "pending": False,
+     "settled_return": None, "synthetic": False},
+    {"ticker": "C", "date": "2026-11-03", "decision": "OVERWEIGHT", "pending": True, "synthetic": False},
+    {"ticker": "D", "date": "2026-11-04", "decision": "HOLD", "pending": False,
+     "settled_return": 0.02, "resolution_date": "2026-11-11", "synthetic": True},
+]}
+with _tf.TemporaryDirectory() as td:
+    lp = os.path.join(td, "ledger.json")
+    _json.dump(led, open(lp, "w"))
+    rows, stats = ts.load_ledger(lp)
+    check("ledger: only scored directed count", stats["scored"] == 1 and rows[0]["ret"] == 0.03)
+    check("ledger: pending/synthetic/unscored counted", stats["pending"] == 1
+          and stats["synthetic_excluded"] == 1 and stats["resolved_unscored"] == 1)
+
+a = [0.01, 0.02, -0.01, 0.015, 0.005, -0.002, 0.012, 0.008, -0.004, 0.011, 0.006, -0.003]
+b = [0.005, 0.01, -0.005, 0.008, 0.002, -0.001, 0.006, 0.004, -0.002, 0.005, 0.003, -0.001]
+rel = ts.relative_metrics(a, b, 252)
+check("relative: beta ~ 2 for doubled series", 1.5 < rel["beta_period_based"] < 2.5)
+check("relative: alpha positive", rel["alpha_annualized"] > 0)
+check("relative: unavailable on short", "unavailable" in ts.relative_metrics(a[:5], b[:5], 252))
+
 print("result:", "GREEN" if not FAILS else "RED (%d)" % len(FAILS))
 sys.exit(1 if FAILS else 0)
