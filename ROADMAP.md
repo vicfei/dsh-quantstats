@@ -35,29 +35,29 @@ annualization-factor disclosure / historical-VaR declaration / sample-size
 alerts). Real smoke: BTC 365d bear-year double table (buy&hold −29.9%/DD
 −39.5% vs SMA20/60 +1.6%/−19.3%).
 
-### V1 · Hardening + release train → npm 0.1.0 (next session)
-- [ ] V1.1 EN-first: engine output via i18n table (en default, `--lang zh`
+### V1 · Hardening + release train ✅ (2026-11-20)
+- [x] V1.1 EN-first: engine output via i18n table (en default, `--lang zh`
       fallback); README pure EN with the upstream-complement table +
       `README.zh-CN.md` translation
-- [ ] V1.2 honesty envelope: the trio becomes structural (annualization
+- [x] V1.2 honesty envelope: the trio becomes structural (annualization
       factor, VaR method, sample-size warnings inside the saved artifact,
       schema perf-report/0); unavailable-with-reason on degenerate series
-- [ ] V1.3 source metadata rides: data origin/date-range/periods/coverage
-- [ ] V1.4 **wordlist expansion from the upstream vocabulary, each with its
+- [x] V1.3 source metadata rides: data origin/date-range/periods/coverage
+- [x] V1.4 **wordlist expansion from the upstream vocabulary, each with its
       caliber**: payoff_ratio / profit_factor / consecutive_wins_losses /
       ulcer_index / tail_ratio / best / worst — all period-based, disclosed
-- [ ] V1.5 release train: root package (bin shim, dsh.bundle + skill,
+- [x] V1.5 release train: root package (bin shim, dsh.bundle + skill,
       hermetic tests + CI, `scripts/*.py` glob); owner publish;
       awesome-dsh submission
 
-### V2 · The family data plane → npm 0.2.0
-- [ ] V2.1 **the committee track-record tearsheet**: consume the
+### V2 · The family data plane ✅ (2026-11-20 → npm 0.2.0)
+- [x] V2.1 **the committee track-record tearsheet**: consume the
       dsh-TradingAgents settled ledger (verdict returns → return series →
       tearsheet) — "the committee's scorecard, one command"; period-based
       caliber stated; synthetic entries marked, never mixed
-- [ ] V2.2 family-engine consumption: jesse backtest summaries, kronos
+- [x] V2.2 family-engine consumption: jesse backtest summaries, kronos
       objectives, any {date, ret} series (JSON/CSV) → tearsheet
-- [ ] V2.3 benchmark-relative mode: excess return / alpha / beta vs a
+- [x] V2.3 benchmark-relative mode: excess return / alpha / beta vs a
       benchmark series, with the same honesty trio
 
 ### V3 · Depth + plugin form (0.3.x)
